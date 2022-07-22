@@ -20,6 +20,13 @@
     - [全局变量 Global 类定义](#全局变量Global类定义)
     - [全局共享状态定义](#全局共享状态定义)
     - [网络请求封装](#网络请求封装)
+5. [打包步骤](#打包步骤) 
+    - [检查 App Manifest](#检查AppManifest)
+    - [查看构建配置](#查看构建配置)
+    - [添加启动图标](#添加启动图标)
+    - [app签名](#app签名)
+    - [构建](#构建)
+    - [安装](#安装)
 
 ## <a name="介绍">介绍</a>  
 
@@ -513,3 +520,90 @@ Doctor summary (to see all details, run flutter doctor -v):
 另外需要注意，我们所有的网络请求是通过同一个dio实例（静态变量）发出的，在创建该dio实例时我们将Github API的基地址和API支持的Header进行了全局配置，这样所有通过该dio实例发出的请求都会默认使用者些配置。  
 
 在本项目中，只用到了登录接口和获取用户项目的接口，所以在Git类中只定义了login(…)和getRepos(…)方法，如果要在本项目的基础上扩充功能，可以将其它的接口请求方法添加到Git类中，这样便实现了网络请求接口在代码层面的集中管理和维护。 
+
+## <a name="打包">打包</a>   
+### <a name="检查AppManifest">检查 App Manifest</a> 
+查看默认[应用程序清单文件](http://developer.android.com/guide/topics/manifest/manifest-intro.html)(位于<app dir>/android/app/src/main/中的AndroidManifest.xml文件)，并验证这些值是否正确，特别是：  
+- `application`: 编辑 [application](https://github.com/MichaelXu1983/StudentMultiNativeClient/edit/master/README.md) 标签， 这是应用的名称。
+- `uses-permission`: 如果您的应用程序代码不需要Internet访问，请删除 `android.permission.INTERNET` 权限。标准模板包含此标记是为了启用Flutter工具和正在运行的应用程序之间的通信。
+    
+### <a name="查看构建配置">查看构建配置</a> 
+查看默认[Gradle 构建文件][gradlebuild]”build.gradle”，它位于 `<app dir>/android/app/`，验证这些值是否正确，尤其是：  
+- `defaultConfig`:  
+    - `applicationId`: 指定始终唯一的 (Application Id) [appid](https://developer.android.com/studio/build/application-id.html)  
+    - `versionCode` & `versionName`: 指定应用程序版本号和版本号字符串。有关详细信息，请参考 [版本文档](https://developer.android.com/studio/publish/versioning.html)  
+    - `minSdkVersion` & `targetSdkVersion`: 指定最低的API级别以及应用程序设计运行的API级别。有关详细信息，请参阅 [版本文档](https://developer.android.com/studio/publish/versioning.html) 中的API级别部分。  
+    
+### <a name="添加启动图标">添加启动图标</a>   
+1. 查看 [Android启动图标](https://developer.android.com/guide/practices/ui_guidelines/icon_design_launcher.html) 设计指南，然后使用[图标工厂](https://icon.wuruihong.com/)在线生成应用图标，[一键改图](https://yijiangaitu.com/radius)在线创建图标。  
+    
+    *Android*  
+    替换 `android/app/src/main/res` 下对应的图标  
+
+    *iOS*  
+    用 XCode 打开项目，点击 `Images.xcassets > AppIcon` 拖入相应尺寸的图标（如果没有你需要的设备，可以删除 `AppIcon` 重新新建一个 `AppIcon` 就有了全部设备）。  
+    
+2. 在 `<app dir>/android/app/src/main/res/` 目录中，将图标文件放入使用 [配置限定符](https://developer.android.com/guide/practices/screens_support.html#qualifiers) 命名的文件夹中。默认mipmap-文件夹演示正确的命名约定。
+
+3. 在 `AndroidManifest.xml` 中，将 [application](https://developer.android.com/guide/topics/manifest/application-element.html) 标记的 `android:icon` 属性更新为引用上一步中的图标（例如 `<application android:icon="@mipmap/ic_launcher" ...` ）。
+
+4. 要验证图标是否已被替换，请运行您的应用程序并检查应用图标  
+                                                                                   
+### <a name="app签名">app签名</a>   
+1. 创建 keystore  
+    ```shell
+    cd android/app
+    keytool -genkey -v -keystore key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias key
+    ```  
+    
+2. 引用应用程序中的keystore  
+    创建一个名为 `<app dir>/android/key.properties` 的文件，其中包含对密钥库的引用：  
+    ```shell
+    storePassword=<password from previous step>
+    keyPassword=<password from previous step>
+    keyAlias=key
+    storeFile=<location of the key store file, e.g. /Users/<user name>/key.jks>
+    ```  
+    
+3. 在gradle中配置签名  
+    通过编辑<app dir>/android/app/build.gradle文件为您的应用配置签名
+    ```java
+    def keystorePropertiesFile = rootProject.file("key.properties")
+    def keystoreProperties = new Properties()
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+
+    android {
+        ...
+    ```  
+    
+    ```java
+        signingConfigs {
+        release {
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile file(keystoreProperties['storeFile'])
+            storePassword keystoreProperties['storePassword']
+            }
+        }
+        buildTypes {
+            release {
+                    signingConfig signingConfigs.release
+                    minifyEnabled true
+                    useProguard true
+                    proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            }
+        }
+    ```  
+    
+    
+### <a name="构建">构建</a>   
+1. `cd <app dir>` (`<app dir>` 为您的工程目录).  
+    
+2. 运行 `flutter build apk --split-per-abi` (flutter build 默认会包含 --release选项).
+    
+    打包好的发布APK位于 `<app dir>/build/app/outputs/apk/app-*-release.apk`，*号为不同的CPU架构包。
+    
+### <a name="安装">安装</a>   
+1. 用USB您的Android设备连接到您的电脑  
+2. `cd <app dir>`
+3. 运行 `adb install app-*-release.apk`
